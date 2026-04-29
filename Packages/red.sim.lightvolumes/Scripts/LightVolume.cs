@@ -188,11 +188,11 @@ namespace VRCLightVolumes {
 #if UNITY_EDITOR
         public void SetAdditionalProbes(int id) {
             RecalculateProbesPositions();
-            UnityEditor.Experimental.Lightmapping.SetAdditionalBakedProbes(id, _probesPositions);
+            LegacyAdditionalBakedProbes.SetAdditionalBakedProbes(id, _probesPositions);
         }
 
         public void RemoveAdditionalProbes(int id) {
-            UnityEditor.Experimental.Lightmapping.SetAdditionalBakedProbes(id, new Vector3[0]);
+            LegacyAdditionalBakedProbes.SetAdditionalBakedProbes(id, new Vector3[0]);
         }
 
         [ContextMenu("Bake Shadow Mask")]
@@ -351,12 +351,10 @@ namespace VRCLightVolumes {
             using (NativeArray<float> probesValidity = new NativeArray<float>(vCount, Allocator.Temp)) {
 
                 // Checking data available
-#pragma warning disable CS0618
-                if (!UnityEditor.Experimental.Lightmapping.GetAdditionalBakedProbes(id, probes, probesValidity)) {
+                if (!LegacyAdditionalBakedProbes.GetAdditionalBakedProbes(id, probes, probesValidity)) {
                     Debug.LogError("[LightVolume] Can't grab light volume data. No additional baked probes found!");
                     return;
                 }
-#pragma warning restore CS0618
 
                 // Creating Texture3D with specified format and dimensions
                 TextureFormat format = TextureFormat.RGBAHalf;

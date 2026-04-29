@@ -244,7 +244,7 @@ namespace VRCLightVolumes {
             }
 #endif
             if (!Application.isPlaying && !_subscribedToUnityLightmapper) {
-                UnityEditor.Experimental.Lightmapping.additionalBakedProbesCompleted += OnAdditionalProbesCompleted;
+                LegacyAdditionalBakedProbes.AddAdditionalBakedProbesCompleted(OnAdditionalProbesCompleted);
                 Lightmapping.bakeStarted += OnUnityBakingStarted;
                 _subscribedToUnityLightmapper = true;
             }
@@ -263,7 +263,7 @@ namespace VRCLightVolumes {
             }
 #endif
             if (!Application.isPlaying && _subscribedToUnityLightmapper) {
-                UnityEditor.Experimental.Lightmapping.additionalBakedProbesCompleted -= OnAdditionalProbesCompleted;
+                LegacyAdditionalBakedProbes.RemoveAdditionalBakedProbesCompleted(OnAdditionalProbesCompleted);
                 Lightmapping.bakeStarted -= OnUnityBakingStarted;
                 _subscribedToUnityLightmapper = false;
 
