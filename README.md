@@ -92,6 +92,8 @@ Alternatively, open the [RED_SIM VPM Listing](https://redsim.github.io/vpmlistin
 
 The Git URL follows `main`. When testing a prerelease, install the matching release or branch so the package and documentation describe the same version.
 
+Supported Unity versions are 2022.3, Unity 6.0 LTS (6000.0) and Unity 6.3 (6000.3) or newer. Unity 6.1 and 6.2 aren't supported, and the package stops compilation there with an error saying so. From Unity 6.3, Progressive baking of Light Volumes uses Unity's LightTransport API.
+
 For existing 2.x projects, see [Migrating from 2.x.x to 3.x.x](./Documentation/BestPractices.md#migrating-from-2xx-to-3xx).
 
 ## Install Example Scenes And Assets

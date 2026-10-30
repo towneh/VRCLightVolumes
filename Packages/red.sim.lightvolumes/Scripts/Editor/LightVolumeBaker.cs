@@ -1,3 +1,6 @@
+#if UNITY_6000_1_OR_NEWER && !UNITY_6000_3_OR_NEWER
+#error VRC Light Volumes supports Unity 2022.3, Unity 6.0 LTS (6000.0) and Unity 6.3 (6000.3) or newer. Unity 6.1 and 6.2 are not supported.
+#endif
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -11,7 +14,7 @@ namespace VRCLightVolumes {
     // Owns global lightmapper callbacks for unified Udon authoring components.
     // All persistent bake settings remain on LightVolumeManager and its registered instances.
     [InitializeOnLoad]
-    internal static class LightVolumeBaker {
+    internal static partial class LightVolumeBaker {
         private const int MaxProbeBakedPointLightCount = 128;
         private const int ProbeBakeThreadGroupSize = 64;
         private const int AdditionalProbeIdStart = 0x4C560000;
@@ -48,9 +51,11 @@ namespace VRCLightVolumes {
 
         // Installs lightmapper lifecycle callbacks once per editor domain.
         static LightVolumeBaker() {
+#if !UNITY_6000_3_OR_NEWER
 #pragma warning disable CS0618
             UnityEditor.Experimental.Lightmapping.additionalBakedProbesCompleted += OnAdditionalBakedProbesCompleted;
 #pragma warning restore CS0618
+#endif
             Lightmapping.bakeStarted += OnUnityBakeStarted;
             Lightmapping.bakeCompleted += OnUnityBakeCompleted;
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
@@ -62,9 +67,11 @@ namespace VRCLightVolumes {
 
         // Removes global callbacks, temporary probe groups and compute fallback textures.
         private static void Shutdown() {
+#if !UNITY_6000_3_OR_NEWER
 #pragma warning disable CS0618
             UnityEditor.Experimental.Lightmapping.additionalBakedProbesCompleted -= OnAdditionalBakedProbesCompleted;
 #pragma warning restore CS0618
+#endif
             Lightmapping.bakeStarted -= OnUnityBakeStarted;
             Lightmapping.bakeCompleted -= OnUnityBakeCompleted;
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
@@ -87,8 +94,12 @@ namespace VRCLightVolumes {
             ResetUnityBakeState();
 
             if (!Lightmapping.TryGetLightingSettings(out LightingSettings settings)) settings = Lightmapping.lightingSettingsDefaults;
-            if (!settings.bakedGI || (settings.lightmapper != LightingSettings.Lightmapper.ProgressiveCPU
-                && settings.lightmapper != LightingSettings.Lightmapper.ProgressiveGPU)) return;
+            bool unityLightmapper = settings.lightmapper == LightingSettings.Lightmapper.ProgressiveCPU
+                || settings.lightmapper == LightingSettings.Lightmapper.ProgressiveGPU;
+#if UNITY_6000_6_OR_NEWER
+            unityLightmapper |= settings.lightmapper == LightingSettings.Lightmapper.UnityComputeGPU;
+#endif
+            if (!settings.bakedGI || !unityLightmapper) return;
 
             _unityManager = GetActiveManager(0);
             if (_unityManager == null) return;
@@ -96,8 +107,13 @@ namespace VRCLightVolumes {
             _unityInitialLightProbesDirtyCount = _unityInitialLightProbes != null ? EditorUtility.GetDirtyCount(_unityInitialLightProbes) : -1;
 
             try {
+#if UNITY_6000_3_OR_NEWER
+                // bakeCompleted is raised for canceled jobs too. Bake delegates only run once the pipeline reaches its last stage, even when the Manager contains only Point Lights.
+                Lightmapping.AddBakeDelegate(BakeLightTransportProbes);
+#else
                 // bakeCompleted is raised for canceled jobs too. A one-probe result lets us verify the additional-probe stage even when the Manager contains only Point Lights.
                 SetAdditionalProbes(ProgressiveCompletionProbeId, new[] { Vector3.zero });
+#endif
                 _progressiveCompletionProbeRegistered = true;
             } catch (Exception exception) {
                 Debug.LogError($"[LightVolumes] Can't register the Progressive completion probe. {exception}", _unityManager);
@@ -115,6 +131,15 @@ namespace VRCLightVolumes {
                     Debug.LogError($"[LightVolumes] Can't bake {volume.gameObject.name}. Check Resolution or lower Voxels Per Unit.", volume);
                     continue;
                 }
+#if UNITY_6000_3_OR_NEWER
+                try {
+                    if (!AddLightTransportProbes(volume)) continue;
+                    _progressiveVolumes.Add(volume);
+                    Debug.Log($"[LightVolumes] Added Progressive probes for \"{volume.gameObject.name}\".", volume);
+                } catch (Exception exception) {
+                    Debug.LogError($"[LightVolumes] {exception}", volume);
+                }
+#else
                 int additionalProbeId = GetAdditionalProbeId(_progressiveVolumes.Count);
                 try {
                     if (!SetAdditionalProbes(volume, additionalProbeId)) continue;
@@ -124,9 +149,11 @@ namespace VRCLightVolumes {
                     RemoveAdditionalProbes(additionalProbeId);
                     Debug.LogError($"[LightVolumes] {exception}", volume);
                 }
+#endif
             }
         }
 
+#if !UNITY_6000_3_OR_NEWER
         // Copies native results while they are available. Early removal also makes unchanged bakes repeat the additional-probe stage.
         private static void OnAdditionalBakedProbesCompleted() {
             if (Application.isPlaying || _unityManager == null || !_progressiveCompletionProbeRegistered) return;
@@ -148,6 +175,7 @@ namespace VRCLightVolumes {
                 CleanupProgressiveProbeRegistrations();
             }
         }
+#endif
 
         // Unity can cancel after the probe stage without raising bakeCompleted. Release snapshots after pending callbacks.
         private static void WatchUnityBake() {
@@ -220,6 +248,7 @@ namespace VRCLightVolumes {
             Debug.Log("[LightVolumes] Progressive bake complete. Atlas packing queued.");
         }
 
+#if !UNITY_6000_3_OR_NEWER
         // Unregisters every temporary Progressive probe group still owned by this bake.
         private static void CleanupProgressiveProbeRegistrations() {
             for (int i = 0; i < _progressiveVolumes.Count; i++) {
@@ -238,6 +267,7 @@ namespace VRCLightVolumes {
                 Debug.LogError($"[LightVolumes] {exception}");
             }
         }
+#endif
 
         // Cancels the active Progressive bake and removes every temporary additional-probe registration.
         private static void ResetUnityBakeState() {
@@ -252,6 +282,7 @@ namespace VRCLightVolumes {
             _unityInitialLightProbesDirtyCount = -1;
         }
 
+#if !UNITY_6000_3_OR_NEWER
         // Checks the current bake's marker only inside Unity's additional-probe result callback.
         private static bool HasProgressiveCompletionProbeResult() {
             using (NativeArray<SphericalHarmonicsL2> probes = new NativeArray<SphericalHarmonicsL2>(1, Allocator.Temp))
@@ -261,6 +292,7 @@ namespace VRCLightVolumes {
 #pragma warning restore CS0618
             }
         }
+#endif
 
         // Selected/lightmap-only jobs and late cancellation can finish additional probes without replacing classic Light Probes. Only a serialized probe change authorizes SH additions.
         private static bool HaveUnityLightProbesChanged() {
@@ -275,10 +307,12 @@ namespace VRCLightVolumes {
             return volume != null && volume.LightVolumeManager == manager && volume.Bake && volume.gameObject.activeInHierarchy && !volume.CompareTag("EditorOnly");
         }
 
+#if !UNITY_6000_3_OR_NEWER
         // Maps stable list order to this package's additional-probe ID namespace.
         private static int GetAdditionalProbeId(int index) {
             return AdditionalProbeIdStart + index;
         }
+#endif
 
         // Queues shadow baking and atlas packing for the completed Manager.
         private static void FinalizeManager(LightVolumeManager manager) {
@@ -287,6 +321,7 @@ namespace VRCLightVolumes {
             LightVolumeManagerEditorBackend.QueueAtlasGeneration(manager);
         }
 
+#if !UNITY_6000_3_OR_NEWER
         // Registers one additional probe group with Unity's Progressive lightmapper.
         private static void SetAdditionalProbes(int id, Vector3[] positions) {
 #pragma warning disable CS0618
@@ -326,23 +361,29 @@ namespace VRCLightVolumes {
                     return null;
                 }
 #pragma warning restore CS0618
-
-                ProgressiveProbeResult result = new ProgressiveProbeResult {
-                    Volume = volume,
-                    L0 = new Vector3[voxelCount],
-                    L1R = new Vector3[voxelCount],
-                    L1G = new Vector3[voxelCount],
-                    L1B = new Vector3[voxelCount],
-                    Validity = validity.ToArray()
-                };
-                for (int i = 0; i < voxelCount; i++) {
-                    result.L0[i] = new Vector3(probes[i][0, 0], probes[i][1, 0], probes[i][2, 0]);
-                    result.L1R[i] = new Vector3(probes[i][0, 3], probes[i][0, 1], probes[i][0, 2]);
-                    result.L1G[i] = new Vector3(probes[i][1, 3], probes[i][1, 1], probes[i][1, 2]);
-                    result.L1B[i] = new Vector3(probes[i][2, 3], probes[i][2, 1], probes[i][2, 2]);
-                }
-                return result;
+                return CreateProgressiveProbeResult(volume, probes, validity);
             }
+        }
+#endif
+
+        // Splits Unity-format SH probes into the L0/L1 channels stored by Light Volumes.
+        private static ProgressiveProbeResult CreateProgressiveProbeResult(LightVolumeInstance volume, NativeArray<SphericalHarmonicsL2> probes, NativeArray<float> validity) {
+            int count = probes.Length;
+            ProgressiveProbeResult result = new ProgressiveProbeResult {
+                Volume = volume,
+                L0 = new Vector3[count],
+                L1R = new Vector3[count],
+                L1G = new Vector3[count],
+                L1B = new Vector3[count],
+                Validity = validity.ToArray()
+            };
+            for (int i = 0; i < count; i++) {
+                result.L0[i] = new Vector3(probes[i][0, 0], probes[i][1, 0], probes[i][2, 0]);
+                result.L1R[i] = new Vector3(probes[i][0, 3], probes[i][0, 1], probes[i][0, 2]);
+                result.L1G[i] = new Vector3(probes[i][1, 3], probes[i][1, 1], probes[i][1, 2]);
+                result.L1B[i] = new Vector3(probes[i][2, 3], probes[i][2, 1], probes[i][2, 2]);
+            }
+            return result;
         }
 
         // Validates, processes and persists custom-lightmapper SH output for one Light Volume.
