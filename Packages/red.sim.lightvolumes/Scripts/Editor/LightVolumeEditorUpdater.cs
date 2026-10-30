@@ -128,40 +128,71 @@ namespace VRCLightVolumes {
                         break;
                     case ObjectChangeKind.CreateGameObjectHierarchy:
                         stream.GetCreateGameObjectHierarchyEvent(i, out CreateGameObjectHierarchyEventArgs createData);
+#if UNITY_6000_4_OR_NEWER
+                        GameObject createdObject = GetGameObject(createData.entityId);
+#else
                         GameObject createdObject = GetGameObject(createData.instanceId);
+#endif
                         QueueHierarchyForSetup(createdObject);
                         break;
                     case ObjectChangeKind.ChangeGameObjectStructure:
                         stream.GetChangeGameObjectStructureEvent(i, out ChangeGameObjectStructureEventArgs structureData);
+#if UNITY_6000_4_OR_NEWER
+                        GameObject structureObject = GetGameObject(structureData.entityId);
+#else
                         GameObject structureObject = GetGameObject(structureData.instanceId);
+#endif
                         QueueHierarchyForSetup(structureObject);
                         QueueManagerRefresh();
                         break;
                     case ObjectChangeKind.ChangeGameObjectStructureHierarchy:
                         stream.GetChangeGameObjectStructureHierarchyEvent(i, out ChangeGameObjectStructureHierarchyEventArgs structureHierarchyData);
+#if UNITY_6000_4_OR_NEWER
+                        GameObject structureHierarchyObject = GetGameObject(structureHierarchyData.entityId);
+#else
                         GameObject structureHierarchyObject = GetGameObject(structureHierarchyData.instanceId);
+#endif
                         QueueHierarchyForSetup(structureHierarchyObject);
                         QueueManagerRefresh();
                         break;
                     case ObjectChangeKind.ChangeGameObjectOrComponentProperties:
                         stream.GetChangeGameObjectOrComponentPropertiesEvent(i, out ChangeGameObjectOrComponentPropertiesEventArgs propertyData);
+#if UNITY_6000_4_OR_NEWER
+                        QueueObject(EditorUtility.EntityIdToObject(propertyData.entityId));
+#else
                         QueueObject(EditorUtility.InstanceIDToObject(propertyData.instanceId));
+#endif
                         break;
                     case ObjectChangeKind.ChangeGameObjectParent:
                         stream.GetChangeGameObjectParentEvent(i, out ChangeGameObjectParentEventArgs parentData);
+#if UNITY_6000_4_OR_NEWER
+                        QueueHierarchy(GetGameObject(parentData.entityId));
+                        QueueHierarchy(GetGameObject(parentData.previousParentEntityId));
+                        QueueHierarchy(GetGameObject(parentData.newParentEntityId));
+#else
                         QueueHierarchy(GetGameObject(parentData.instanceId));
                         QueueHierarchy(GetGameObject(parentData.previousParentInstanceId));
                         QueueHierarchy(GetGameObject(parentData.newParentInstanceId));
+#endif
                         break;
                     case ObjectChangeKind.DestroyGameObjectHierarchy:
                         stream.GetDestroyGameObjectHierarchyEvent(i, out DestroyGameObjectHierarchyEventArgs destroyData);
+#if UNITY_6000_4_OR_NEWER
+                        QueueHierarchy(GetGameObject(destroyData.parentEntityId));
+#else
                         QueueHierarchy(GetGameObject(destroyData.parentInstanceId));
+#endif
                         QueueManagerRefresh();
                         break;
                     case ObjectChangeKind.UpdatePrefabInstances:
                         stream.GetUpdatePrefabInstancesEvent(i, out UpdatePrefabInstancesEventArgs prefabData);
+#if UNITY_6000_4_OR_NEWER
+                        for (int instanceIndex = 0; instanceIndex < prefabData.entityIds.Length; instanceIndex++)
+                            QueueHierarchyForSetup(GetGameObject(prefabData.entityIds[instanceIndex]));
+#else
                         for (int instanceIndex = 0; instanceIndex < prefabData.instanceIds.Length; instanceIndex++)
                             QueueHierarchyForSetup(GetGameObject(prefabData.instanceIds[instanceIndex]));
+#endif
                         QueueManagerRefresh();
                         break;
                 }
@@ -175,8 +206,13 @@ namespace VRCLightVolumes {
         }
 
         // Resolves an object or component instance ID to its owning GameObject.
+#if UNITY_6000_4_OR_NEWER
+        private static GameObject GetGameObject(EntityId entityId) {
+            UnityEngine.Object changedObject = EditorUtility.EntityIdToObject(entityId);
+#else
         private static GameObject GetGameObject(int instanceId) {
             UnityEngine.Object changedObject = EditorUtility.InstanceIDToObject(instanceId);
+#endif
             if (changedObject is GameObject gameObject) return gameObject;
             return changedObject is Component component ? component.gameObject : null;
         }

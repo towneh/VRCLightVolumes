@@ -29,7 +29,7 @@ namespace VRCLightVolumes {
         private GUIContent _previewVoxelsContent;
 
         private AtlasState[] _atlasStates;
-        private long[] _bakeryDependencyStates;
+        private BakeryDependencyState[] _bakeryDependencyStates;
 
         // Exact atlas dependency snapshot used to detect Inspector changes without hash collisions.
         private readonly struct AtlasState {
@@ -66,6 +66,24 @@ namespace VRCLightVolumes {
                     && _bake == volume.Bake
                     && _reserveUvSpace == volume.ReserveUVSpace
                     && _resolution == volume.Resolution;
+            }
+        }
+
+        // Exact Bakery dependency snapshot: Manager identity, its baking mode and the volume's bake state.
+        private readonly struct BakeryDependencyState {
+            private readonly LightVolumeManager _manager;
+            private readonly bool _bakeryMode;
+            private readonly bool _bake;
+
+            public BakeryDependencyState(LightVolumeInstance volume) {
+                _manager = volume != null ? volume.LightVolumeManager : null;
+                _bakeryMode = _manager != null && _manager.EditorIsBakeryMode;
+                _bake = volume != null && volume.Bake;
+            }
+
+            public bool Matches(LightVolumeInstance volume) {
+                BakeryDependencyState current = new BakeryDependencyState(volume);
+                return ReferenceEquals(_manager, current._manager) && _bakeryMode == current._bakeryMode && _bake == current._bake;
             }
         }
 
@@ -111,7 +129,7 @@ namespace VRCLightVolumes {
             LightVolumeManagerEditorBackend.SynchronizeRuntimeInspectorGraphsFromUdon(targets);
             serializedObject.UpdateIfRequiredOrScript();
             int undoGroup = Undo.GetCurrentGroup();
-            long[] previousBakeryStates = CaptureBakeryDependencyStates();
+            BakeryDependencyState[] previousBakeryStates = CaptureBakeryDependencyStates();
 
             DrawToolbar();
             DrawDataSize();
@@ -387,31 +405,21 @@ namespace VRCLightVolumes {
         }
 
         // Captures dependency-affecting values before the inspector applies a multi-object edit.
-        private long[] CaptureBakeryDependencyStates() {
-            if (_bakeryDependencyStates == null || _bakeryDependencyStates.Length != targets.Length) _bakeryDependencyStates = new long[targets.Length];
-            for (int i = 0; i < targets.Length; i++) _bakeryDependencyStates[i] = GetBakeryDependencyState(targets[i] as LightVolumeInstance);
+        private BakeryDependencyState[] CaptureBakeryDependencyStates() {
+            if (_bakeryDependencyStates == null || _bakeryDependencyStates.Length != targets.Length) _bakeryDependencyStates = new BakeryDependencyState[targets.Length];
+            for (int i = 0; i < targets.Length; i++) _bakeryDependencyStates[i] = new BakeryDependencyState(targets[i] as LightVolumeInstance);
             return _bakeryDependencyStates;
         }
 
         // Updates Bakery helpers only for volumes whose relevant inspector settings changed.
-        private void ApplyExplicitBakeryDependencyChanges(long[] previousStates) {
+        private void ApplyExplicitBakeryDependencyChanges(BakeryDependencyState[] previousStates) {
             for (int i = 0; i < targets.Length; i++) {
                 LightVolumeInstance volume = targets[i] as LightVolumeInstance;
-                if (volume == null || previousStates == null || i >= previousStates.Length || previousStates[i] == GetBakeryDependencyState(volume)) continue;
+                if (volume == null || previousStates == null || i >= previousStates.Length || previousStates[i].Matches(volume)) continue;
                 LightVolumeManager manager = volume.LightVolumeManager;
                 if (manager == null) continue;
                 LightVolumeTools.SetupBakeryDependencies(volume, manager.EditorIsBakeryMode && volume.Bake);
             }
-        }
-
-        // Packs Manager identity, baking mode and volume bake state without hash collisions.
-        private static long GetBakeryDependencyState(LightVolumeInstance volume) {
-            if (volume == null) return 0;
-            LightVolumeManager manager = volume.LightVolumeManager;
-            long state = manager == null ? 0L : (long)manager.GetInstanceID() << 2;
-            if (manager != null && manager.EditorIsBakeryMode) state |= 2L;
-            if (volume.Bake) state |= 1L;
-            return state;
         }
 
         // Rebuilds derived data and previews after an Undo or Redo operation.

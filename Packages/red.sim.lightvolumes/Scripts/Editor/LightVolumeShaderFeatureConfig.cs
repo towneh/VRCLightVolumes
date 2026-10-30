@@ -120,7 +120,7 @@ namespace VRCLightVolumes {
         private static bool _refreshQueued;
         private static bool _writing;
         private static bool _detectionDirty = true;
-        private static int _detectedSceneHandle;
+        private static Scene _detectedScene;
         private static LightVolumeShaderFeatures _detectedFeatures;
         private static readonly Dictionary<string, string> _configSources = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, string> _configErrors = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -265,7 +265,11 @@ namespace VRCLightVolumes {
                 }
                 if (kind != ObjectChangeKind.ChangeGameObjectOrComponentProperties) continue;
                 stream.GetChangeGameObjectOrComponentPropertiesEvent(i, out ChangeGameObjectOrComponentPropertiesEventArgs change);
+#if UNITY_6000_4_OR_NEWER
+                UnityEngine.Object changed = EditorUtility.EntityIdToObject(change.entityId);
+#else
                 UnityEngine.Object changed = EditorUtility.InstanceIDToObject(change.instanceId);
+#endif
                 if (!AffectsDetectedFeatures(changed)) continue;
                 QueueRefresh();
                 return;
@@ -399,9 +403,9 @@ namespace VRCLightVolumes {
 
         // Caches only the requested scene; scene and object-change events invalidate the cached scan.
         private static LightVolumeShaderFeatures CacheSceneFeatures(Scene scene) {
-            if (_detectionDirty || _detectedSceneHandle != scene.handle) {
+            if (_detectionDirty || _detectedScene != scene) {
                 _detectedFeatures = DetectSceneFeatures(scene);
-                _detectedSceneHandle = scene.handle;
+                _detectedScene = scene;
                 _detectionDirty = false;
             }
             return _detectedFeatures;

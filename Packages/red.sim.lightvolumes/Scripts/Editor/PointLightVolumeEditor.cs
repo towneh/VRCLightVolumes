@@ -245,7 +245,11 @@ namespace VRCLightVolumes {
             SerializedProperty property = serializedObject.FindProperty("FarClip");
             GUIContent label = GetPropertyContent(property, "Far Plane");
             Rect position = EditorGUILayout.GetControlRect();
+#if UNITY_6000_4_OR_NEWER
+            string controlName = FarClipControlName + serializedObject.targetObject.GetEntityId();
+#else
             string controlName = FarClipControlName + serializedObject.targetObject.GetInstanceID();
+#endif
 
             EditorGUI.BeginProperty(position, label, property);
             EditorGUI.showMixedValue = property.hasMultipleDifferentValues;
